@@ -31,6 +31,14 @@ PERSON_2 = "Sam"
 
 MONTHS_OF_HISTORY = 5
 
+# Every generated day is clamped to the 28th so a month-length difference
+# never moves a recurring charge, and the month is treated as 30 days when
+# working out how far through it today is.
+LAST_SAFE_DAY_OF_MONTH = 28
+DAYS_IN_MONTH = 30
+# Below this, topping a category up to its pace is not worth a row.
+MIN_TOPUP_USD = 5.0
+
 
 def _assert_demo_db() -> None:
     url = config.DATABASE_URL or ""
@@ -43,7 +51,13 @@ def _assert_demo_db() -> None:
 
 
 def _wipe() -> None:
-    """Clear anything a previous run left, so seeding is idempotent."""
+    """Clear anything a previous run left, so seeding is idempotent.
+
+    Guarded in its own right: this is the destructive step, and it must
+    refuse a real database even when called directly rather than through
+    :func:`main`.
+    """
+    _assert_demo_db()
     with sync_engine.begin() as conn:
         conn.execute(text("DELETE FROM json_stores"))
         conn.execute(
@@ -228,7 +242,7 @@ def _level_current_month(rows: list, ids: dict) -> list:
     today = date.today()
     start = _month_start(0)
     elapsed = (today - start).days + 1
-    progress = elapsed / 30
+    progress = elapsed / DAYS_IN_MONTH
     merchants = {c: (m, a) for m, c, _lo, _hi, _n, a in VARIABLE}
     discretionary = {m for m, *_ in VARIABLE}
 
@@ -260,7 +274,7 @@ def _level_current_month(rows: list, ids: dict) -> list:
             spent[category] -= victim.amount
 
         deficit = target - spent.get(category, 0.0)
-        if deficit < 5:
+        if deficit < MIN_TOPUP_USD:
             continue
         merchant, acct = merchants[category]
         when = start + timedelta(days=RNG.randint(0, max(0, elapsed - 1)))
@@ -276,7 +290,7 @@ def _seed_transactions(ids: dict) -> int:
         start = _month_start(offset)
 
         def day(n: int, _start=start):
-            d = _start.replace(day=min(n, 28))
+            d = _start.replace(day=min(n, LAST_SAFE_DAY_OF_MONTH))
             return None if d > today else d
 
         for desc, category, amount, dom, acct in RECURRING:
@@ -299,9 +313,9 @@ def _seed_transactions(ids: dict) -> int:
         # The current month is only part-spent, so its variable spending is
         # scaled to the days elapsed — otherwise a full month of groceries
         # lands in the first week and every budget reads as blown.
-        span = 28 if offset else min(28, today.day)
+        span = LAST_SAFE_DAY_OF_MONTH if offset else min(LAST_SAFE_DAY_OF_MONTH, today.day)
         for desc, category, low, high, per_month, acct in VARIABLE:
-            count = per_month if offset else round(per_month * span / 28)
+            count = per_month if offset else round(per_month * span / LAST_SAFE_DAY_OF_MONTH)
             for _ in range(count):
                 d = day(RNG.randint(1, span))
                 if d:

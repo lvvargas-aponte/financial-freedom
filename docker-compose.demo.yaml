@@ -7,8 +7,11 @@
 #   docker compose -f docker-compose.demo.yaml -p finfree-demo run --rm backend python -m scripts.seed_demo
 #   docker compose -f docker-compose.demo.yaml -p finfree-demo down -v   # -v drops the demo volume
 #
-# Every credential inherited from .env is blanked below: the demo instance
-# cannot reach SimpleFIN, SnapTrade or the Google Sheet.
+# The demo backend does not read .env at all — it gets the handful of values
+# it needs from this file, so a secret added to .env later cannot leak into a
+# stack built for sharing. It therefore cannot reach SimpleFIN, SnapTrade or
+# the Google Sheet, and everything else falls back to the defaults in
+# backend/config.py.
 services:
   db:
     image: pgvector/pgvector:pg16
@@ -34,16 +37,17 @@ services:
     image: csv-teller-expense-hub-backend:latest
     ports:
       - "8010:8000"
-    env_file:
-      - .env
     environment:
       - DATABASE_URL=postgresql+asyncpg://finfree:finfree_demo@db:5432/financial_freedom_demo
       - OLLAMA_HOST=http://host.docker.internal:11434
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:14b-instruct}
+      - OLLAMA_CHAT_MODEL=${OLLAMA_CHAT_MODEL:-qwen2.5:14b-instruct}
       # Fictitious household — real names must never reach a committed screenshot.
       - PERSON_1_NAME=Alex
       - PERSON_2_NAME=Sam
       - INSTANCE_PERSON_SLOT=1
-      # Blanked so the demo instance cannot touch real bank/brokerage/Sheet data.
+      # Named explicitly rather than inherited, so the demo cannot reach real
+      # bank/brokerage/Sheet data even if .env grows a new credential.
       - SIMPLEFIN_ACCESS_URLS=
       - SNAPTRADE_CLIENT_ID=
       - SNAPTRADE_CONSUMER_KEY=
