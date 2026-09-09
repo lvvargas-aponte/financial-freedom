@@ -65,6 +65,23 @@ test('largest-balance rule picks the credit account with the highest |ledger|', 
   expect(card.body).toMatch(/24% APR/);
 });
 
+test('largest-balance rule never calls an installment loan a card balance', () => {
+  const summary = { accounts: [
+    { id: 'l1', type: 'credit', subtype: 'loan', name: 'Auto Loan', ledger: -12480 },
+    { id: 'c1', type: 'credit', subtype: 'credit_card', name: 'Rewards Card', ledger: -1842 },
+  ]};
+  const card = buildInsights({ summary }).find((c) => c.id === 'largest-balance');
+  expect(card.title).toMatch(/Rewards Card/);
+  expect(card.title).not.toMatch(/Auto Loan/);
+});
+
+test('largest-balance rule skips when the only debt is a loan', () => {
+  const summary = { accounts: [
+    { id: 'l1', type: 'credit', subtype: 'auto', name: 'Auto Loan', ledger: -12480 },
+  ]};
+  expect(buildInsights({ summary }).find((c) => c.id === 'largest-balance')).toBeFalsy();
+});
+
 test('largest-balance rule skips when there are no credit accounts', () => {
   const summary = { accounts: [{ id: 'a1', type: 'depository', ledger: 5000 }] };
   const out = buildInsights({ summary });

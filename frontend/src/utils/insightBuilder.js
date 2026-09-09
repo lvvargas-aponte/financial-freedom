@@ -1,4 +1,4 @@
-import { classifyAccountBucket } from './accountBucket';
+import { classifyAccountBucket, isInstallmentLoan } from './accountBucket';
 import { txnDirection } from './formatting';
 
 // Build curated "insight cards" from data already loaded by FinancesPage.
@@ -150,7 +150,12 @@ function ruleLargestBalance(summary, accountDetails = {}) {
   // Through the shared classifier, not a bare `type` test: a card whose
   // bucket comes from its subtype would otherwise be invisible here while
   // /debt and the home hero both count it.
-  const credit = accounts.filter((a) => classifyAccountBucket(a) === 'credit');
+  // Installment loans are excluded: an auto loan is not a card balance, and
+  // the payoff planner this row sends you to is cards-only, so naming a loan
+  // here promises a plan that cannot include it.
+  const credit = accounts.filter(
+    (a) => classifyAccountBucket(a) === 'credit' && !isInstallmentLoan(a),
+  );
   if (credit.length === 0) return null;
   // ledger represents balance owed for credit accounts in this app's shape.
   let biggest = null;
