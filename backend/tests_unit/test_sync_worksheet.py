@@ -104,6 +104,19 @@ class TestEnsure:
         monkeypatch.setattr(gw, "duplicate_worksheet", racing_duplicate)
         assert ws.ensure_worksheet(gw, "2026-07") == "July 2026"
 
+    def test_failed_clear_removes_the_copy(self, monkeypatch):
+        """A half-built copy must not survive to be read as the month's data."""
+        gw = _gw()
+
+        def failing_clear(title, start_row):
+            raise RuntimeError("Sheets API refused")
+
+        monkeypatch.setattr(gw, "clear_rows_from", failing_clear)
+        with pytest.raises(RuntimeError):
+            ws.ensure_worksheet(gw, "2026-07")
+        assert "July 2026" not in gw.list_worksheets()
+        assert ws.find_worksheet(gw, "2026-07") is None
+
     def test_raises_when_there_is_no_template(self):
         gw = InMemoryGateway({"_sync": [["key", "value"]]})
         with pytest.raises(ws.NoTemplateWorksheet):

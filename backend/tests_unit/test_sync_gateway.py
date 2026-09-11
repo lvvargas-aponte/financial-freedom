@@ -137,6 +137,16 @@ class TestWorksheetLifecycle:
         with pytest.raises(ValueError):
             gw.clear_rows_from("June 2026", 1)
 
+    def test_delete_worksheet(self):
+        gw = _gw()
+        gw.delete_worksheet("June 2026")
+        assert "June 2026" not in gw.list_worksheets()
+
+    def test_delete_missing_worksheet_raises(self):
+        gw = _gw()
+        with pytest.raises(WorksheetNotFound):
+            gw.delete_worksheet("Nope")
+
     def test_set_hidden(self):
         gw = _gw()
         gw.set_hidden("_sync", True)

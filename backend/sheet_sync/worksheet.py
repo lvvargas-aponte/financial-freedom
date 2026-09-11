@@ -99,5 +99,11 @@ def ensure_worksheet(gateway: SheetGateway, period: str) -> str:
             return found
         raise
 
-    gateway.clear_rows_from(title, 2)
+    try:
+        gateway.clear_rows_from(title, 2)
+    except Exception:
+        # A copy that still holds the template's rows would be found by the
+        # next sync and read as this month's data.
+        gateway.delete_worksheet(title)
+        raise
     return title

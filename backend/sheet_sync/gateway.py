@@ -44,6 +44,7 @@ class SheetGateway(Protocol):
     def duplicate_worksheet(self, source_title: str, new_title: str) -> None: ...
     def create_worksheet(self, title: str, rows: int = 100, cols: int = 26) -> None: ...
     def clear_rows_from(self, title: str, start_row: int) -> None: ...
+    def delete_worksheet(self, title: str) -> None: ...
     def set_hidden(self, title: str, hidden: bool) -> None: ...
     def rename_worksheet(self, title: str, new_title: str) -> None: ...
 
@@ -123,6 +124,12 @@ class InMemoryGateway(SheetGateway):
                 f"(got {start_row} for worksheet {title!r})"
             )
         del rows[start_row - 1:]
+
+    def delete_worksheet(self, title: str) -> None:
+        self.calls.append("delete_worksheet")
+        self._sheet(title)
+        del self.data[title]
+        self.hidden.discard(title)
 
     def set_hidden(self, title: str, hidden: bool) -> None:
         self.calls.append("set_hidden")
@@ -214,12 +221,15 @@ class GspreadGateway(SheetGateway):
 
     def clear_rows_from(self, title: str, start_row: int) -> None:
         ws = self._ws(title)
-        # row_count is the sheet's allocated grid (often 1000), not the data
-        # extent InMemoryGateway models — correct here because our only use
-        # is clearing a freshly duplicated worksheet down to its header.
-        # start_row must never be 1: the Sheets API rejects a zero-row sheet.
+        # Clears values instead of deleting rows: the Sheets API refuses to
+        # delete every non-frozen row, and append_rows writes by coordinate,
+        # which fails past the grid's allocated rows. Emptied trailing rows
+        # drop out of get_all_values, matching InMemoryGateway's deletion.
         if ws.row_count >= start_row:
-            ws.delete_rows(start_row, ws.row_count)
+            ws.batch_clear([f"{start_row}:{ws.row_count}"])
+
+    def delete_worksheet(self, title: str) -> None:
+        self._ss.del_worksheet(self._ws(title))
 
     def rename_worksheet(self, title: str, new_title: str) -> None:
         if new_title == title:
