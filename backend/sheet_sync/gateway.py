@@ -201,12 +201,16 @@ class GspreadGateway(SheetGateway):
             ws.delete_rows(n)
 
     def duplicate_worksheet(self, source_title: str, new_title: str) -> None:
-        if new_title in self.list_worksheets():
+        titles = self.list_worksheets()
+        if new_title in titles:
             raise WorksheetExists(f"Worksheet {new_title!r} already exists")
         source = self._ws(source_title)
         try:
+            # Without an index the API inserts the copy as the first tab.
             self._ss.duplicate_sheet(
-                source_sheet_id=source.id, new_sheet_name=new_title
+                source_sheet_id=source.id,
+                new_sheet_name=new_title,
+                insert_sheet_index=len(titles),
             )
         except gspread.exceptions.APIError as e:
             raise WorksheetExists(f"Worksheet {new_title!r} already exists") from e
