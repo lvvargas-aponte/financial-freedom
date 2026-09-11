@@ -85,6 +85,8 @@ Every endpoint is mounted under `/api`. The static help site lives at `/help/`; 
 | `POST` | `/api/sync/shared` | Push your rows and pull the peer's |
 | `POST` `DELETE` | `/api/sync/periods/{period}/ready` | Mark ready / withdraw |
 | `POST` `DELETE` | `/api/sync/periods/{period}/paid` | Mark paid / reopen |
+| `GET` | `/api/sync/close-together/preview` | Preview closing a range of months with one payment |
+| `POST` | `/api/sync/close-together` | Close a range of months with one payment |
 | `POST` | `/api/sync/corrections/{id}/acknowledge` | Dismiss a correction |
 | `PUT` | `/api/sync/peer-rows/{txn_id}/dispute` | Raise or clear a dispute |
 | `POST` | `/api/send-to-gsheet` | One-way export of shared transactions |

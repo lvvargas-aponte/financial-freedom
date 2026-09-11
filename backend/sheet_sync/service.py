@@ -88,12 +88,7 @@ def open_periods(today: Optional[date] = None) -> List[str]:
     period by this definition. ``syncable_periods`` is what a sweep iterates.
     """
     today = today or date.today()
-    year, month = (int(p) for p in worksheet.CUTOVER_PERIOD.split("-"))
-    periods: List[str] = []
-    while (year, month) <= (today.year, today.month):
-        periods.append(f"{year:04d}-{month:02d}")
-        year, month = (year + 1, 1) if month == 12 else (year, month + 1)
-    return periods
+    return worksheet.periods_between(worksheet.CUTOVER_PERIOD, today.strftime("%Y-%m"))
 
 
 def syncable_periods(today: Optional[date] = None) -> List[str]:

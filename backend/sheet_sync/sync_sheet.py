@@ -46,11 +46,15 @@ SYNC_HEADERS = [
     "Debtor User ID",
     "PIF At",
     "PIF Note",
+    # Appended, never inserted: an instance on an older release still reads
+    # and writes the first fourteen columns by position.
+    "Settled With",
 ]
 
 _RECORD, _PERIOD, _USER_ID = 0, 1, 2
 _DISPLAY_NAME, _SLOT, _VERSION, _P1, _P2 = 3, 4, 5, 6, 7
 _READY_AT, _CLOSED_AT, _NET, _DEBTOR, _PIF_AT, _PIF_NOTE = 8, 9, 10, 11, 12, 13
+_SETTLED_WITH = 14
 
 CLAIM_RECORD = "claim"
 PERIOD_RECORD = "period"
@@ -89,8 +93,20 @@ def ensure_sync_worksheet(gateway: SheetGateway) -> None:
     except WorksheetExists:
         pass
 
-    if not gateway.read_rows(SYNC_TITLE):
+    rows = gateway.read_rows(SYNC_TITLE)
+    if not rows:
         gateway.append_rows(SYNC_TITLE, [list(SYNC_HEADERS)])
+    else:
+        # A tab created by an earlier release is narrower than today's header.
+        header = rows[0]
+        missing = [
+            CellUpdate(row=1, col=i + 1, value=name)
+            for i, name in enumerate(SYNC_HEADERS)
+            if i >= len(header) or not header[i].strip()
+        ]
+        if missing:
+            gateway.ensure_columns(SYNC_TITLE, len(SYNC_HEADERS))
+            gateway.write_cells(SYNC_TITLE, missing)
 
     gateway.set_hidden(SYNC_TITLE, True)
 
@@ -193,6 +209,7 @@ def read_period_records(gateway: SheetGateway) -> List[dict]:
                 "debtor_user_id": _cell(row, _DEBTOR) or None,
                 "pif_at": _cell(row, _PIF_AT) or None,
                 "pif_note": _cell(row, _PIF_NOTE) or None,
+                "settled_with": _cell(row, _SETTLED_WITH) or None,
             }
         )
     return records
@@ -215,6 +232,7 @@ def write_period_record(gateway: SheetGateway, record: dict) -> None:
     values[_DEBTOR] = record.get("debtor_user_id") or ""
     values[_PIF_AT] = record.get("pif_at") or ""
     values[_PIF_NOTE] = escape_formula(record.get("pif_note") or "")
+    values[_SETTLED_WITH] = record.get("settled_with") or ""
 
     _upsert_row(
         gateway,

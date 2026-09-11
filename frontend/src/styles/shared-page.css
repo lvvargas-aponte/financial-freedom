@@ -694,6 +694,59 @@
 }
 .sh-paid-input:focus { border-color: var(--accent-mid); }
 
+/* ── Closing several months with one payment ─────────────────────────── */
+
+.sh-ct {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: 15px 18px;
+  background: var(--bg-card);
+  border: 1px solid var(--accent-mid);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+
+.sh-ct-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); }
+.sh-ct-sub { font-size: 11.5px; color: var(--text-muted); }
+
+.sh-ct-range,
+.sh-ct-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.sh-ct-range .sh-paid-input { min-width: 0; }
+.sh-ct-actions .sh-paid-input { min-width: 150px; }
+
+.sh-ct-months {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+.sh-ct-months li { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.sh-ct-month { min-width: 120px; font-weight: 600; color: var(--text-primary); }
+
+.sh-ct-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  color: var(--amber-text);
+}
+
+.sh-ct-total {
+  font-size: var(--text-base, 14px);
+  font-weight: 700;
+  color: var(--accent);
+}
+
 /* ── Repairing a blocked row in place ────────────────────────────────── */
 
 .sh-mini--fix {

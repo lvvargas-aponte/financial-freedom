@@ -39,6 +39,25 @@ def period_to_title(period: str) -> str:
     return f"{calendar.month_name[int(month)]} {int(year)}"
 
 
+def periods_between(start: str, end: str) -> list[str]:
+    """Every ``YYYY-MM`` from ``start`` to ``end`` inclusive; empty if reversed."""
+    year, month = (int(p) for p in start.split("-"))
+    end_year, end_month = (int(p) for p in end.split("-"))
+    periods: list[str] = []
+    while (year, month) <= (end_year, end_month):
+        periods.append(f"{year:04d}-{month:02d}")
+        year, month = (year + 1, 1) if month == 12 else (year, month + 1)
+    return periods
+
+
+def range_label(start: str, end: str) -> str:
+    """``June–August 2026``, or ``December 2026–January 2027`` across a year."""
+    first, last = period_to_title(start), period_to_title(end)
+    if start[:4] == end[:4]:
+        return f"{first.split()[0]}–{last}"
+    return f"{first}–{last}"
+
+
 def title_to_period(title: str) -> Optional[str]:
     match = _TITLE_RE.match(title or "")
     if not match:

@@ -12,7 +12,7 @@ from pydantic import BaseModel, field_validator
 
 import identity_service
 from db import peer_transactions_repo, sync_state_repo
-from sheet_sync import service, settlement, shared_view, worksheet
+from sheet_sync import close_together, service, settlement, shared_view, worksheet
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -158,12 +158,72 @@ async def mark_period_paid(period: str, req: Optional[PaidRequest] = None) -> Di
 
 @router.delete("/sync/periods/{period}/paid")
 async def reopen_period(period: str) -> Dict[str, Any]:
-    """Undo this instance's "paid in full". Only ever clears our own record."""
+    """Undo this instance's "paid in full". Only ever clears our own record.
+
+    A month closed together with others reopens with all of them.
+    """
     _validate_period(period)
-    settlement.reopen(period)
     # Drops the ``- PIF`` suffix again and refreshes the footer.
-    published = settlement.publish(period)
-    return {**_settlement_state(period), "published": published}
+    published = close_together.reopen(period)
+    return {
+        **_settlement_state(period),
+        "published": published.get(period),
+        "reopened": list(published),
+    }
+
+
+class CloseTogetherRequest(BaseModel):
+    start: str
+    end: str
+    note: Optional[str] = None
+
+    @field_validator("start", "end")
+    @classmethod
+    def _well_formed(cls, v: str) -> str:
+        if not _PERIOD_RE.match(v):
+            raise ValueError("period must be YYYY-MM")
+        return v
+
+
+def _validate_run(start: str, end: str) -> None:
+    _validate_period(start)
+    _validate_period(end)
+    if end <= start:
+        raise HTTPException(
+            status_code=422,
+            detail="Pick at least two months — the last must come after the first.",
+        )
+
+
+@router.get("/sync/close-together/preview")
+async def preview_close_together(
+    start: str = Query(..., pattern=_PERIOD_RE.pattern),
+    end: str = Query(..., pattern=_PERIOD_RE.pattern),
+) -> Dict[str, Any]:
+    """What closing a run of months with one payment would settle. Reads only."""
+    _validate_run(start, end)
+    try:
+        return close_together.preview(start, end)
+    except service.SyncDisabled as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.warning(f"[close-together] preview {start}..{end} failed: {e}")
+        raise HTTPException(status_code=502, detail="Could not read the spreadsheet.")
+
+
+@router.post("/sync/close-together")
+async def close_months_together(req: CloseTogetherRequest) -> Dict[str, Any]:
+    """Mark every month from ``start`` to ``end`` paid by one payment."""
+    _validate_run(req.start, req.end)
+    try:
+        return close_together.close(req.start, req.end, note=req.note)
+    except close_together.Blocked as e:
+        raise HTTPException(status_code=409, detail=" ".join(e.reasons))
+    except service.SyncDisabled as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.warning(f"[close-together] close {req.start}..{req.end} failed: {e}")
+        raise HTTPException(status_code=502, detail="Could not close those months.")
 
 
 @router.post("/sync/corrections/{correction_id}/acknowledge")

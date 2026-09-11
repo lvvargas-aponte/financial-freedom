@@ -38,6 +38,19 @@ class TestEnsure:
         assert len(gw.read_rows(sync_sheet.SYNC_TITLE)) == 2
         assert [c.user_id for c in sync_sheet.read_claims(gw)] == [ME.user_id]
 
+    def test_widens_a_header_written_by_an_older_release(self):
+        gw = InMemoryGateway({sync_sheet.SYNC_TITLE: [sync_sheet.SYNC_HEADERS[:-1]]})
+        sync_sheet.ensure_sync_worksheet(gw)
+
+        assert gw.read_rows(sync_sheet.SYNC_TITLE)[0] == sync_sheet.SYNC_HEADERS
+        assert "ensure_columns" in gw.calls
+
+    def test_a_current_header_is_left_alone(self):
+        gw = InMemoryGateway({sync_sheet.SYNC_TITLE: [list(sync_sheet.SYNC_HEADERS)]})
+        sync_sheet.ensure_sync_worksheet(gw)
+
+        assert "write_cells" not in gw.calls
+
     def test_repairs_a_worksheet_that_exists_without_headers(self):
         gw = InMemoryGateway({sync_sheet.SYNC_TITLE: []})
         sync_sheet.ensure_sync_worksheet(gw)
@@ -134,8 +147,25 @@ class TestPeriodRecords:
                 "debtor_user_id": PEER.user_id,
                 "pif_at": None,
                 "pif_note": None,
+                "settled_with": None,
             }
         ]
+
+    def test_a_run_of_months_closed_together_round_trips(self):
+        gw = InMemoryGateway({})
+        sync_sheet.write_period_record(gw, self._record(settled_with="2026-06..2026-08"))
+
+        assert sync_sheet.read_period_records(gw)[0]["settled_with"] == "2026-06..2026-08"
+
+    def test_a_row_written_by_an_older_release_still_reads(self):
+        gw = InMemoryGateway({})
+        sync_sheet.ensure_sync_worksheet(gw)
+        gw.append_rows(
+            sync_sheet.SYNC_TITLE,
+            [["period", "2026-06", PEER.user_id, "Christy", "", "", "", "", "", "", "", "", "", ""]],
+        )
+
+        assert sync_sheet.read_period_records(gw)[0]["settled_with"] is None
 
     def test_rewriting_the_same_month_updates_rather_than_appends(self):
         gw = InMemoryGateway({})

@@ -72,10 +72,13 @@ export default function SettleActions({
             ? 'You marked this month settled.'
             : `${state.paid_by_name || peerName} marked this month settled.`}
           {state.paid_note ? ` “${state.paid_note}”` : ''}
+          {state.closed_together ? ` Closed together: ${state.closed_together.label}.` : ''}
         </span>
         {state.paid_by_me ? (
           <button type="button" className="sh-mini" onClick={onReopen} disabled={busy}>
-            Reopen
+            {state.closed_together
+              ? `Reopen all ${state.closed_together.periods.length} months`
+              : 'Reopen'}
           </button>
         ) : (
           // Only the instance that declared it can take it back; ours would

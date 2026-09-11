@@ -45,6 +45,7 @@ class SheetGateway(Protocol):
     def create_worksheet(self, title: str, rows: int = 100, cols: int = 26) -> None: ...
     def clear_rows_from(self, title: str, start_row: int) -> None: ...
     def delete_worksheet(self, title: str) -> None: ...
+    def ensure_columns(self, title: str, count: int) -> None: ...
     def set_hidden(self, title: str, hidden: bool) -> None: ...
     def rename_worksheet(self, title: str, new_title: str) -> None: ...
 
@@ -130,6 +131,11 @@ class InMemoryGateway(SheetGateway):
         self._sheet(title)
         del self.data[title]
         self.hidden.discard(title)
+
+    def ensure_columns(self, title: str, count: int) -> None:
+        # A list row has no allocated width to outgrow.
+        self.calls.append("ensure_columns")
+        self._sheet(title)
 
     def set_hidden(self, title: str, hidden: bool) -> None:
         self.calls.append("set_hidden")
@@ -234,6 +240,12 @@ class GspreadGateway(SheetGateway):
 
     def delete_worksheet(self, title: str) -> None:
         self._ss.del_worksheet(self._ws(title))
+
+    def ensure_columns(self, title: str, count: int) -> None:
+        # Cell writes past the allocated grid are rejected, not auto-expanded.
+        ws = self._ws(title)
+        if ws.col_count < count:
+            ws.add_cols(count - ws.col_count)
 
     def rename_worksheet(self, title: str, new_title: str) -> None:
         if new_title == title:

@@ -8,11 +8,13 @@ reported rather than enforced. These tests pin that down, because the tempting
 import pytest
 from fastapi.testclient import TestClient
 
+import config
 import identity_service
 import state
 from db import identity_repo, period_settlements_repo
 from main import app
-from sheet_sync import service, settlement, shared_view
+from sheet_sync import close_together, contract, service, settlement, shared_view
+from sheet_sync.gateway import InMemoryGateway
 
 P1, P2 = "Valeria", "Christy"
 PEER_ID = "22222222-2222-2222-2222-222222222222"
@@ -222,6 +224,134 @@ class TestSyncablePeriods:
         client.delete(f"/api/sync/periods/{PERIOD}/paid")
 
         assert PERIOD in service.syncable_periods()
+
+
+def _sheet_row(txn_id, day, owes_1="", owes_2=""):
+    headers = contract.build_headers(P1, P2)
+    index = contract.header_index_map(headers, P1, P2)
+    row = [""] * len(headers)
+    row[index["date"]] = day
+    row[index["description"]] = "Shared thing"
+    row[index["amount"]] = "100"
+    row[index["who"]] = P1 if owes_2 else P2
+    row[index["owes_1"]] = owes_1
+    row[index["owes_2"]] = owes_2
+    row[index["txn_id"]] = txn_id
+    return row
+
+
+@pytest.fixture
+def sheet(monkeypatch):
+    """June: Valeria owes 30. July: Christy owes 100. August: Christy owes 20.
+
+    So June–August nets to Christy paying Valeria 90.
+    """
+    headers = contract.build_headers(P1, P2)
+    gw = InMemoryGateway({
+        "June 2026": [headers[:], _sheet_row("a", "06/10/2026", owes_1="30")],
+        "July 2026": [headers[:], _sheet_row("b", "07/10/2026", owes_2="100")],
+        "August 2026": [headers[:], _sheet_row("c", "08/10/2026", owes_2="20")],
+    })
+    monkeypatch.setattr(service, "build_gateway", lambda: gw)
+    monkeypatch.setattr(config, "PERSON_1_NAME", P1)
+    monkeypatch.setattr(config, "PERSON_2_NAME", P2)
+    monkeypatch.setattr(close_together, "PERSON_1_NAME", P1)
+    monkeypatch.setattr(close_together, "PERSON_2_NAME", P2)
+    return gw
+
+
+def _who_lines(gw, title):
+    headers = contract.build_headers(P1, P2)
+    who = contract.header_index_map(headers, P1, P2)["who"]
+    return [r[who] for r in gw.read_rows(title) if len(r) > who and r[who]]
+
+
+RUN = {"start": "2026-06", "end": "2026-08"}
+
+
+class TestCloseTogether:
+    def test_preview_nets_the_months_from_the_sheet(self, client, sheet):
+        body = client.get("/api/sync/close-together/preview", params=RUN).json()
+
+        assert [m["net"] for m in body["months"]] == [30.0, 100.0, 20.0]
+        assert body["months"][0]["debtor"] == P1
+        assert body["total"] == {
+            "net": 90.0, "debtor": P2, "creditor": P1, "net_for_me": 90.0,
+        }
+        assert body["label"] == "June–August 2026"
+        assert body["blockers"] == []
+
+    def test_preview_flags_a_month_the_app_sees_differently(self, client, sheet):
+        my_row("aug", date="08/10/2026", owes=20.0)
+        months = client.get("/api/sync/close-together/preview", params=RUN).json()["months"]
+
+        # August matches the app; June and July have no local rows at all.
+        assert [m["mismatch"] for m in months] == [True, True, False]
+
+    def test_closing_settles_every_month_as_one_run(self, client, sheet):
+        res = client.post("/api/sync/close-together", json={**RUN, "note": "via Zelle"})
+        assert res.status_code == 200
+
+        for period in ("2026-06", "2026-07", "2026-08"):
+            s = client.get(f"/api/sync/shared-rows?period={period}").json()["settlement_state"]
+            assert s["state"] == "settled"
+            assert s["closed_together"]["label"] == "June–August 2026"
+
+    def test_every_tab_is_marked_pif(self, client, sheet):
+        client.post("/api/sync/close-together", json=RUN)
+
+        assert {"June 2026 - PIF", "July 2026 - PIF", "August 2026 - PIF"} <= set(
+            sheet.list_worksheets()
+        )
+
+    def test_the_sheet_carries_the_note_and_the_one_payment(self, client, sheet):
+        client.post("/api/sync/close-together", json=RUN)
+
+        assert _who_lines(sheet, "June 2026 - PIF")[-1] == (
+            "Closed together June–August 2026 · see August 2026"
+        )
+        assert _who_lines(sheet, "August 2026 - PIF")[-5:] == [
+            "Closed together June–August 2026 (aggregated):",
+            "June 2026: Valeria owes Christy $30.00",
+            "July 2026: Christy owes Valeria $100.00",
+            "August 2026: Christy owes Valeria $20.00",
+            "Christy pays Valeria via Zelle",
+        ]
+
+    def test_a_month_already_paid_refuses_the_whole_run(self, client, sheet, peer):
+        period_settlements_repo.upsert(
+            "2026-07", PEER_ID, pif_at="2026-08-01T10:00:00+00:00"
+        )
+        res = client.post("/api/sync/close-together", json=RUN)
+
+        assert res.status_code == 409
+        assert "July 2026 is already marked paid in full by Christy" in res.json()["detail"]
+        # Nothing was written for the months that could have closed.
+        assert settlement.who_settled("2026-06") is None
+        assert "June 2026" in sheet.list_worksheets()
+
+    def test_reopening_one_month_reopens_the_run(self, client, sheet):
+        client.post("/api/sync/close-together", json=RUN)
+        body = client.delete("/api/sync/periods/2026-07/paid").json()
+
+        assert body["reopened"] == ["2026-06", "2026-07", "2026-08"]
+        assert settlement.settled_periods() == []
+        assert {"June 2026", "July 2026", "August 2026"} <= set(sheet.list_worksheets())
+        # Back to an ordinary one-month footer, breakdown gone.
+        assert _who_lines(sheet, "August 2026")[-1] == "Christy pays Valeria via Zelle"
+        assert not any("Closed together" in line for line in _who_lines(sheet, "August 2026"))
+
+    def test_a_run_before_the_cutover_is_refused(self, client):
+        res = client.get(
+            "/api/sync/close-together/preview", params={"start": "2026-04", "end": "2026-08"}
+        )
+        assert res.status_code == 422
+
+    def test_a_run_of_one_month_is_refused(self, client):
+        res = client.post(
+            "/api/sync/close-together", json={"start": "2026-07", "end": "2026-07"}
+        )
+        assert res.status_code == 422
 
 
 class TestPeriodValidation:

@@ -3,6 +3,7 @@ import SyncStatusLine from './SyncStatusLine';
 import CorrectionsFeed from './CorrectionsFeed';
 import SettleUpCard from './SettleUpCard';
 import SettleActions from './SettleActions';
+import CloseTogetherPanel from './CloseTogetherPanel';
 import AttentionStrip from './AttentionStrip';
 import SharedFilters, { matchesFilter } from './SharedFilters';
 import SharedDayGroup from './SharedDayGroup';
@@ -11,9 +12,11 @@ import { SyncIcon } from './icons';
 import {
   getSharedRows, getSyncStatus, syncShared, acknowledgeCorrection, setDispute,
   markPeriodReady, withdrawPeriodReady, markPeriodPaid, reopenPeriod,
+  previewCloseTogether, closeTogether,
 } from '../../api/sync';
 import { putTransactionFields, getPersonNames } from '../../api/transactions';
 import { userMessage } from '../../utils/errorMessage';
+import { fmt$ } from '../../utils/formatting';
 
 const CUTOVER_PERIOD = '2026-06';
 
@@ -68,6 +71,7 @@ export default function SharedPage() {
   const [mySlot, setMySlot] = useState(1);
   // What the last settlement action managed to write to the spreadsheet.
   const [published, setPublished] = useState(null);
+  const [closingOpen, setClosingOpen] = useState(false);
 
   const load = useCallback(async (p) => {
     setLoading(true);
@@ -185,6 +189,25 @@ export default function SharedPage() {
     }
   }, [period, load]);
 
+  const handlePreviewCloseTogether = useCallback(
+    async (start, end) => (await previewCloseTogether(start, end)).data,
+    [],
+  );
+
+  // Errors are left to the panel, which shows them beside the figures.
+  const handleCloseTogether = useCallback(async (start, end, note) => {
+    const res = await closeTogether(start, end, note);
+    const { label, total, published: perMonth } = res.data;
+    const missed = Object.entries(perMonth || {})
+      .filter(([, p]) => !p.published)
+      .map(([p]) => p);
+    setClosingOpen(false);
+    await load(period);
+    setSyncMessage(missed.length
+      ? { kind: 'error', text: `Closed ${label} here, but the sheet wasn't updated for ${missed.join(', ')}.` }
+      : { kind: 'ok', text: `Closed ${label} together — ${total.debtor} pays ${total.creditor} ${fmt$(total.net)}.` });
+  }, [period, load]);
+
   const dismissCorrection = useCallback(async (id) => {
     try {
       await acknowledgeCorrection(id);
@@ -197,6 +220,7 @@ export default function SharedPage() {
     }
   }, []);
 
+  const openPeriods = status?.open_periods || [];
   const peerName = peer && peer.display_name ? peer.display_name : 'peer';
   const monthLabel = (months.find((m) => m.key === period) || {}).label || period;
   const visible = useMemo(() => rows.filter((r) => matchesFilter(r, filter)), [rows, filter]);
@@ -216,6 +240,11 @@ export default function SharedPage() {
           </select>
         </div>
         <span className="sh-spacer" />
+        {openPeriods.length >= 2 && !closingOpen && (
+          <button type="button" className="sh-btn" onClick={() => setClosingOpen(true)}>
+            Close several months…
+          </button>
+        )}
         <button type="button" className="sh-btn" onClick={handleSync} disabled={syncing}>
           {syncing ? <><Spin /> Syncing…</> : <><SyncIcon /> Sync now</>}
         </button>
@@ -231,6 +260,16 @@ export default function SharedPage() {
             onClick={() => setError(null)}
           >✕</button>
         </div>
+      )}
+
+      {closingOpen && (
+        <CloseTogetherPanel
+          periods={openPeriods}
+          currentPeriod={months[months.length - 1]?.key}
+          onPreview={handlePreviewCloseTogether}
+          onConfirm={handleCloseTogether}
+          onCancel={() => setClosingOpen(false)}
+        />
       )}
 
       <SettleUpCard settlement={settlement} peerName={peerName} monthLabel={monthLabel} />

@@ -31,3 +31,10 @@ export const markPeriodPaid = (period, note) =>
 
 export const reopenPeriod = (period) =>
   axios.delete(`${API}/api/sync/periods/${period}/paid`);
+
+// Several open months paid off by one payment.
+export const previewCloseTogether = (start, end) =>
+  axios.get(`${API}/api/sync/close-together/preview`, { params: { start, end } });
+
+export const closeTogether = (start, end, note) =>
+  axios.post(`${API}/api/sync/close-together`, { start, end, note: note || null });

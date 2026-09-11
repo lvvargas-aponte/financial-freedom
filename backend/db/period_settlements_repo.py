@@ -18,7 +18,7 @@ from db.base import sync_engine
 
 _COLS = (
     "period, user_id, ready_at, closed_at, net_amount, debtor_user_id, "
-    "pif_at, pif_note, updated_at"
+    "pif_at, pif_note, updated_at, settled_with"
 )
 
 
@@ -37,17 +37,18 @@ def _to_dict(row) -> Dict[str, Any]:
         "pif_at": _iso(row[6]),
         "pif_note": row[7],
         "updated_at": _iso(row[8]),
+        "settled_with": row[9],
     }
 
 
 _UPSERT_SQL = text(
     "INSERT INTO period_settlements ("
     "  period, user_id, ready_at, closed_at, net_amount, debtor_user_id, "
-    "  pif_at, pif_note"
+    "  pif_at, pif_note, settled_with"
     ") VALUES ("
     "  :period, :user_id, CAST(:ready_at AS TIMESTAMPTZ), "
     "  CAST(:closed_at AS TIMESTAMPTZ), :net_amount, :debtor_user_id, "
-    "  CAST(:pif_at AS TIMESTAMPTZ), :pif_note"
+    "  CAST(:pif_at AS TIMESTAMPTZ), :pif_note, :settled_with"
     ") ON CONFLICT (period, user_id) DO UPDATE SET "
     "  ready_at = EXCLUDED.ready_at, "
     "  closed_at = EXCLUDED.closed_at, "
@@ -55,11 +56,13 @@ _UPSERT_SQL = text(
     "  debtor_user_id = EXCLUDED.debtor_user_id, "
     "  pif_at = EXCLUDED.pif_at, "
     "  pif_note = EXCLUDED.pif_note, "
+    "  settled_with = EXCLUDED.settled_with, "
     "  updated_at = NOW()"
 )
 
 _FIELDS = (
     "ready_at", "closed_at", "net_amount", "debtor_user_id", "pif_at", "pif_note",
+    "settled_with",
 )
 
 

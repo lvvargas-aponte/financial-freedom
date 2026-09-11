@@ -124,6 +124,24 @@ test('a month you settled shows the badge, your note, and a way back', async () 
   expect(onReopen).toHaveBeenCalled();
 });
 
+test('a month closed with others says so and reopens the whole run', async () => {
+  const onReopen = jest.fn();
+  renderActions({
+    state: 'settled',
+    paid_at: '2026-09-11T12:00:00Z',
+    paid_by_me: true,
+    closed_together: {
+      periods: ['2026-06', '2026-07', '2026-08'],
+      label: 'June–August 2026',
+    },
+  }, { onReopen });
+
+  expect(screen.getByText(/you marked this month settled/i))
+    .toHaveTextContent('Closed together: June–August 2026.');
+  await userEvent.click(screen.getByRole('button', { name: 'Reopen all 3 months' }));
+  expect(onReopen).toHaveBeenCalled();
+});
+
 test('a month the peer settled names them and offers no reopen button', () => {
   renderActions({
     state: 'settled',

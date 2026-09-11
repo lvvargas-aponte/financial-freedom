@@ -33,6 +33,24 @@ Every settlement call returns the month's whole recomputed position, so the card
 response rather than a second round trip. If the other side settles first, their record wins — the
 page reloads rather than showing a state that lost.
 
+### Close several months together
+
+When more than one month is open, **Close several months…** in the header pays them all off with one
+transfer:
+
+1. Pick the first and last month and click **Preview**. Each month shows who owes whom, taken from
+   that month's tab. A month where the app has a different figure is flagged — sync it before closing.
+2. The preview adds the months up into one line: who pays whom, and how much in total.
+3. Add an optional note and click **Close N months**.
+
+Every month in the range is marked paid and its tab gets the ` - PIF` suffix. Each tab keeps its own
+totals, and its payment line reads *Closed together June–August 2026 · see August 2026*. The last
+month's tab lists each month's figure and the one payment line for the total.
+
+The whole range is refused if any month in it is already paid, has no tab yet, or is before the
+`2026-06` cutover. **Reopen** on any of those months reopens all of them, and each tab goes back to
+an ordinary one-month footer.
+
 ## Sync now
 
 **Sync now** pushes your shared rows to the sheet and pulls the peer's. The result line reports
@@ -76,7 +94,10 @@ key marks who paid.
 - `GET /api/sync/status` — last sync, pending corrections
 - `POST /api/sync/shared` — push and pull for one period
 - `POST` / `DELETE /api/sync/periods/{period}/ready` — mark ready, withdraw
-- `POST` / `DELETE /api/sync/periods/{period}/paid` — mark paid, reopen
+- `POST` / `DELETE /api/sync/periods/{period}/paid` — mark paid, reopen (a month closed together
+  reopens with the rest of its range)
+- `GET /api/sync/close-together/preview?start=&end=` — what closing a range would settle
+- `POST /api/sync/close-together` — close a range with one payment
 - `POST /api/sync/corrections/{id}/acknowledge` — dismiss a correction
 - `PUT /api/sync/peer-rows/{txn_id}/dispute` — raise or clear a dispute
 - `PUT /api/transactions/{id}` — the inline repairs (who, split)

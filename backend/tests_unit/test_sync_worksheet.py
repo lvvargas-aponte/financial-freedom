@@ -47,6 +47,22 @@ class TestTitleMapping:
         assert ws.is_settled_title(title) is settled
 
 
+class TestRanges:
+    def test_periods_between_is_inclusive_and_crosses_a_year(self):
+        assert ws.periods_between("2026-11", "2027-02") == [
+            "2026-11", "2026-12", "2027-01", "2027-02"
+        ]
+
+    def test_periods_between_reversed_is_empty(self):
+        assert ws.periods_between("2026-08", "2026-06") == []
+
+    def test_range_label_within_a_year(self):
+        assert ws.range_label("2026-06", "2026-08") == "June–August 2026"
+
+    def test_range_label_across_a_year(self):
+        assert ws.range_label("2026-12", "2027-01") == "December 2026–January 2027"
+
+
 class TestFinding:
     def test_find_worksheet_matches_regardless_of_suffix(self):
         assert ws.find_worksheet(_gw(), "2026-03") == "March 2026 - PIF"

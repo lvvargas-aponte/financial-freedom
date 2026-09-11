@@ -36,14 +36,38 @@ PIF_SUFFIX = " - PIF"
 # months on the live sheet say Zelle.
 DEFAULT_METHOD = "via Zelle"
 
-# " X pays Y …" — how the settlement line is recognised on a re-run, so the
-# footer is rewritten in place instead of stacking up a second copy.
-_SETTLEMENT_RE = re.compile(r"\bpays\b", re.IGNORECASE)
+CLOSED_TOGETHER = "Closed together"
+
+# " X pays Y …", or a month closed together with others — how the settlement
+# line is recognised on a re-run, so the footer is rewritten in place instead
+# of stacking up a second copy.
+_SETTLEMENT_RE = re.compile(r"\bpays\b|\bclosed together\b", re.IGNORECASE)
+
+
+@dataclass(frozen=True)
+class Closing:
+    """This month was paid off together with others, by one payment.
+
+    Every month in the run points at the summary month; only the summary month
+    (``total`` set) carries the per-month breakdown and the payment itself.
+    ``months`` and ``total`` are signed the way ``plan`` signs a net: positive
+    means person 2 owes person 1.
+    """
+
+    label: str
+    summary_title: str
+    months: tuple[tuple[str, Decimal], ...] = ()
+    total: Optional[Decimal] = None
 
 
 @dataclass(frozen=True)
 class Footer:
-    """The two rendered lines, and where they belong."""
+    """The rendered lines, and where they belong.
+
+    ``block`` sits between the totals and the settlement line; ``note``
+    replaces the payment sentence on a month whose payment lives elsewhere.
+    ``clear_rows`` are rows of a previous, longer footer left to blank out.
+    """
 
     totals_row: int
     settlement_row: int
@@ -53,9 +77,14 @@ class Footer:
     debtor: str
     creditor: str
     method: str
+    block: tuple[str, ...] = ()
+    note: Optional[str] = None
+    clear_rows: tuple[int, ...] = ()
 
     @property
     def sentence(self) -> str:
+        if self.note:
+            return self.note
         return f"{self.debtor} pays {self.creditor} {self.method}".strip()
 
 
@@ -142,6 +171,20 @@ def last_transaction_row(rows: List[List[str]], index: dict) -> int:
     return 1
 
 
+def debtor_creditor(
+    net: Decimal, person_1_name: str, person_2_name: str
+) -> tuple[str, str]:
+    return (person_2_name, person_1_name) if net >= 0 else (person_1_name, person_2_name)
+
+
+def month_line(title: str, net: Decimal, person_1_name: str, person_2_name: str) -> str:
+    """``June 2026: Valeria owes Christy $949.12`` — one month of a summary."""
+    if net == 0:
+        return f"{title}: even"
+    debtor, creditor = debtor_creditor(net, person_1_name, person_2_name)
+    return f"{title}: {debtor} owes {creditor} {_money(abs(net))}"
+
+
 def plan(
     rows: List[List[str]],
     index: dict,
@@ -149,23 +192,34 @@ def plan(
     person_1_name: str,
     person_2_name: str,
     method: Optional[str] = None,
+    closing: Optional[Closing] = None,
 ) -> Footer:
     """Where the footer goes and what it says. Pure."""
-    totals_row, settlement_row = find_existing(rows, index)
-    if totals_row is None or settlement_row is None:
+    totals_row, old_settlement_row = find_existing(rows, index)
+    if totals_row is None or old_settlement_row is None:
         # One blank row of air after the transactions, matching the sheet's
         # existing rhythm, then totals, a blank, and the settlement line.
-        anchor = last_transaction_row(rows, index)
-        totals_row = anchor + 2
-        settlement_row = totals_row + 2
+        totals_row = last_transaction_row(rows, index) + 2
+        old_settlement_row = None
 
     owes_1, owes_2 = totals_from_rows(
-        rows, index, skip_rows={totals_row, settlement_row}
+        rows, index, skip_rows={totals_row, old_settlement_row}
     )
     net = owes_2 - owes_1
-    debtor, creditor = (
-        (person_2_name, person_1_name) if net >= 0 else (person_1_name, person_2_name)
-    )
+
+    block: tuple[str, ...] = ()
+    note = None
+    if closing is not None and closing.total is None:
+        note = f"{CLOSED_TOGETHER} {closing.label} · see {closing.summary_title}"
+    elif closing is not None:
+        block = (
+            f"{CLOSED_TOGETHER} {closing.label} (aggregated):",
+            *(month_line(t, n, person_1_name, person_2_name) for t, n in closing.months),
+        )
+        net = closing.total
+
+    settlement_row = totals_row + 2 + len(block)
+    debtor, creditor = debtor_creditor(net, person_1_name, person_2_name)
 
     return Footer(
         totals_row=totals_row,
@@ -176,17 +230,68 @@ def plan(
         debtor=debtor,
         creditor=creditor,
         method=(method or "").strip() or DEFAULT_METHOD,
+        block=block,
+        note=note,
+        clear_rows=_stale_rows(
+            rows, index, totals_row, settlement_row, old_settlement_row
+        ),
     )
 
 
+def _stale_rows(
+    rows: List[List[str]],
+    index: dict,
+    totals_row: int,
+    settlement_row: int,
+    old_settlement_row: Optional[int],
+) -> tuple[int, ...]:
+    """Rows of the previous footer that the new one does not overwrite.
+
+    Only rows still carrying text: a summary shrinking back to a one-month
+    footer must not leave its breakdown behind, but blank separators need no
+    write.
+    """
+    if old_settlement_row is None:
+        return ()
+    written = {totals_row, *range(totals_row + 2, settlement_row + 1)}
+    cols = [index.get(k) for k in ("who", "owes_1", "owes_2")]
+    stale = []
+    for row_number in range(totals_row + 1, min(old_settlement_row, len(rows)) + 1):
+        raw = rows[row_number - 1]
+        if row_number not in written and any(
+            c is not None and c < len(raw) and raw[c].strip() for c in cols
+        ):
+            stale.append(row_number)
+    return tuple(stale)
+
+
 def updates_for(footer: Footer, index: dict) -> List[CellUpdate]:
-    """The cells to write. Only the four the convention fills."""
-    return [
-        CellUpdate(row=footer.totals_row, col=index["owes_1"] + 1, value=_money(footer.owes_1)),
-        CellUpdate(row=footer.totals_row, col=index["owes_2"] + 1, value=_money(footer.owes_2)),
-        CellUpdate(row=footer.settlement_row, col=index["who"] + 1, value=footer.sentence),
-        CellUpdate(row=footer.settlement_row, col=index["owes_1"] + 1, value=_money(footer.net)),
+    """The cells to write — the convention's four, plus any closing lines."""
+    who, owes_1, owes_2 = index["who"] + 1, index["owes_1"] + 1, index["owes_2"] + 1
+    updates = [
+        CellUpdate(row=footer.totals_row, col=owes_1, value=_money(footer.owes_1)),
+        CellUpdate(row=footer.totals_row, col=owes_2, value=_money(footer.owes_2)),
     ]
+    # Blank the amount cells of text-only lines: the row may have held the
+    # payment line of a previous, shorter footer.
+    for offset, line in enumerate(footer.block):
+        row = footer.totals_row + 2 + offset
+        updates += [
+            CellUpdate(row=row, col=who, value=line),
+            CellUpdate(row=row, col=owes_1, value=""),
+            CellUpdate(row=row, col=owes_2, value=""),
+        ]
+    updates += [
+        CellUpdate(row=footer.settlement_row, col=who, value=footer.sentence),
+        CellUpdate(
+            row=footer.settlement_row,
+            col=owes_1,
+            value="" if footer.note else _money(footer.net),
+        ),
+    ]
+    for row in footer.clear_rows:
+        updates += [CellUpdate(row=row, col=c, value="") for c in (who, owes_1, owes_2)]
+    return updates
 
 
 def write(
@@ -198,6 +303,7 @@ def write(
     person_1_name: str,
     person_2_name: str,
     method: Optional[str] = None,
+    closing: Optional[Closing] = None,
 ) -> Footer:
     """Render the footer onto ``title``, rewriting any footer already there."""
     footer = plan(
@@ -205,6 +311,7 @@ def write(
         person_1_name=person_1_name,
         person_2_name=person_2_name,
         method=method,
+        closing=closing,
     )
 
     # The footer sits below the last row that exists, so the blank rows it

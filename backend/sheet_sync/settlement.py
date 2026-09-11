@@ -40,7 +40,7 @@ def _mine_and_theirs(
     return mine, theirs
 
 
-def _net_of(settlement: Optional[Dict[str, Any]]) -> Optional[float]:
+def signed_net(settlement: Optional[Dict[str, Any]]) -> Optional[float]:
     """The signed net a settlement block describes, from my point of view.
 
     Positive means the peer owes me. ``shared_view`` reports ``net`` as an
@@ -74,7 +74,7 @@ def describe(period: str, settlement: Optional[Dict[str, Any]] = None) -> Dict[s
     else:
         state = OPEN
 
-    live_net = _net_of(settlement)
+    live_net = signed_net(settlement)
     peer_ready = next((r for r in theirs if r["ready_at"]), None)
 
     # Both sides declared a net; if they disagree the page says so rather than
@@ -103,6 +103,29 @@ def describe(period: str, settlement: Optional[Dict[str, Any]] = None) -> Dict[s
         "declared_net": float(mine["net_amount"]) if mine and mine["net_amount"] is not None else None,
         "live_net": live_net,
         "net_disagreement": disagreement,
+        "closed_together": _closed_together(paid_by),
+    }
+
+
+def group_periods(settled_with: Optional[str]) -> List[str]:
+    """``2026-06..2026-08`` -> every month of that run; [] when not grouped."""
+    from sheet_sync import worksheet
+
+    if not settled_with or ".." not in settled_with:
+        return []
+    start, end = settled_with.split("..", 1)
+    return worksheet.periods_between(start, end)
+
+
+def _closed_together(record: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    from sheet_sync import worksheet
+
+    periods = group_periods(record.get("settled_with") if record else None)
+    if not periods:
+        return None
+    return {
+        "periods": periods,
+        "label": worksheet.range_label(periods[0], periods[-1]),
     }
 
 
@@ -139,7 +162,7 @@ def _current(period: str) -> Dict[str, Any]:
 def mark_ready(period: str, settlement: Dict[str, Any]) -> Dict[str, Any]:
     """Declare my rows for ``period`` complete, recording the net I computed."""
     me = identity_service.ensure_identity()
-    net = _net_of(settlement)
+    net = signed_net(settlement)
     debtor = None
     if net is not None and net != 0:
         debtor = _peer_user_id() if net > 0 else me["user_id"]
@@ -153,6 +176,7 @@ def mark_ready(period: str, settlement: Dict[str, Any]) -> Dict[str, Any]:
         pif_at=existing.get("pif_at"),
         pif_note=existing.get("pif_note"),
         closed_at=existing.get("closed_at"),
+        settled_with=existing.get("settled_with"),
     )
 
 
@@ -167,21 +191,26 @@ def withdraw_ready(period: str) -> Dict[str, Any]:
         pif_at=existing.get("pif_at"),
         pif_note=existing.get("pif_note"),
         closed_at=existing.get("closed_at"),
+        settled_with=existing.get("settled_with"),
     )
 
 
 def mark_paid(
-    period: str, settlement: Dict[str, Any], note: Optional[str] = None
+    period: str,
+    settlement: Dict[str, Any],
+    note: Optional[str] = None,
+    settled_with: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Declare ``period`` paid in full.
 
     Never blocked on the peer: this instance may settle a month the other side
     has not agreed to, and marking paid implies ready even if it was never
     declared, because the two cannot meaningfully disagree once money moved.
+    ``settled_with`` names the run of months one payment covered.
     """
     existing = _current(period)
     now = _now()
-    net = _net_of(settlement)
+    net = signed_net(settlement)
     return _write(
         period,
         ready_at=existing.get("ready_at") or now,
@@ -190,6 +219,7 @@ def mark_paid(
         pif_at=now,
         pif_note=(note or "").strip() or None,
         closed_at=now,
+        settled_with=settled_with,
     )
 
 
@@ -209,6 +239,7 @@ def reopen(period: str) -> Dict[str, Any]:
         pif_at=None,
         pif_note=None,
         closed_at=None,
+        settled_with=None,
     )
 
 
@@ -229,13 +260,20 @@ def who_settled(period: str) -> Optional[str]:
     return _display_name(settled) if settled else None
 
 
-def publish(period: str, *, settle: bool = False, method: Optional[str] = None) -> Dict[str, Any]:
+def publish(
+    period: str,
+    *,
+    settle: bool = False,
+    method: Optional[str] = None,
+    closing: Optional[Any] = None,
+) -> Dict[str, Any]:
     """Push this month's settlement to the spreadsheet.
 
     Two visible effects, both of which a person reads directly:
     the footer at the bottom of the month tab, and — once settled — the
     ``- PIF`` suffix on the tab's own title, the convention this spreadsheet
-    has used since 2023.
+    has used since 2023. ``closing`` (a ``footer.Closing``) renders the month
+    as one of several paid off together.
 
     Never raises for a sheet problem: a settlement is a statement about a
     month, and failing to publish it must not lose the local record. The
@@ -268,6 +306,7 @@ def publish(period: str, *, settle: bool = False, method: Optional[str] = None) 
             person_1_name=PERSON_1_NAME,
             person_2_name=PERSON_2_NAME,
             method=method,
+            closing=closing,
         )
 
         renamed = None
@@ -340,6 +379,7 @@ def sync_records(gateway, period: str) -> None:
                 debtor_user_id=record["debtor_user_id"],
                 pif_at=record["pif_at"],
                 pif_note=record["pif_note"],
+                settled_with=record.get("settled_with"),
             )
 
         mine = period_settlements_repo.get(period, me["user_id"])
