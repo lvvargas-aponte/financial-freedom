@@ -70,3 +70,59 @@ test('a successful bank sync sets a normal (non-error) toast', async () => {
   );
   expect(result.current.syncToast.error).toBeUndefined();
 });
+
+describe('what a sync brought in', () => {
+  const render = () => renderHook(() => useSyncFlow({
+    reload: jest.fn(), setError: jest.fn(), filterMonth: 'all', sharedCount: 0,
+  }));
+
+  test('a bank sync keeps the new transaction ids for the page', async () => {
+    axios.post.mockResolvedValue({ data: { total_new: 2, new_ids: ['a', 'b'] } });
+    const { result } = render();
+
+    await act(async () => {
+      await result.current.syncBanks('2026-09-01', '2026-09-30', null);
+    });
+
+    expect(result.current.newTransactionIds).toEqual(['a', 'b']);
+  });
+
+  test('a CSV upload keeps the ids of the rows it added', async () => {
+    axios.post.mockResolvedValue({
+      data: { count: 1, duplicates: 0, transactions: [{ id: 'csv-1' }] },
+    });
+    const { result } = render();
+
+    act(() => {
+      result.current.handleCsvPicked({ target: { files: [{ name: 'statement.csv' }], value: '' } });
+    });
+    await act(async () => {
+      await result.current.submitCsvUpload(new FormData());
+    });
+
+    expect(result.current.newTransactionIds).toEqual(['csv-1']);
+  });
+
+  test('the page clears them once it has offered categories', async () => {
+    axios.post.mockResolvedValue({ data: { total_new: 1, new_ids: ['a'] } });
+    const { result } = render();
+
+    await act(async () => {
+      await result.current.syncBanks('2026-09-01', '2026-09-30', null);
+    });
+    act(() => result.current.clearNewTransactionIds());
+
+    expect(result.current.newTransactionIds).toEqual([]);
+  });
+
+  test('a failed sync brings in nothing', async () => {
+    axios.post.mockRejectedValue({ response: { data: { detail: 'boom' } } });
+    const { result } = render();
+
+    await act(async () => {
+      await result.current.syncBanks('2026-09-01', '2026-09-30', null);
+    });
+
+    expect(result.current.newTransactionIds).toEqual([]);
+  });
+});

@@ -64,6 +64,12 @@ The rail is pinned — it stays in place as you scroll the table. Below ~1600px 
 2. Click **Suggest** → opens the [Suggest Categories preview modal](../modals/suggest-preview.md).
 3. Review per-row suggestions and apply.
 
+After a bank sync or a CSV upload this happens on its own: once the new rows land, Current asks for
+suggestions for the ones that arrived without a category and opens the same preview. A banner shows
+while it works. Nothing is applied until you confirm, and applying a category never marks a row
+reviewed. If you are on another page when the sync finishes, the preview waits until you open
+Current.
+
 ### Send shared expenses to Google Sheets
 
 1. Click **📊 Send to Sheet** in the control bar.

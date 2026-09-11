@@ -32,6 +32,8 @@ const baseSyncFlow = {
   setPendingCsvFile: jest.fn(),
   accountsRefreshKey: 0,
   setAccountsRefreshKey: jest.fn(),
+  newTransactionIds: [],
+  clearNewTransactionIds: jest.fn(),
   syncBanks: jest.fn(),
   handleCsvPicked: jest.fn(),
   submitCsvUpload: jest.fn(),

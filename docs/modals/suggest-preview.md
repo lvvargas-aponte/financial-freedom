@@ -2,7 +2,8 @@
 
 > Source: `frontend/src/components/transactions/SuggestPreviewModal.js`, `backend/routers/transactions.py`
 
-Title: **Suggest categories**. Opens after clicking **Suggest** in the bulk bar.
+Title: **Suggest categories**. Opens after clicking **Suggest** in the bulk bar, and on its own
+after a bank sync or CSV upload brings in uncategorized transactions.
 
 ## Purpose
 

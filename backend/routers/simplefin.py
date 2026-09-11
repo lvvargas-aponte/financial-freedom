@@ -99,6 +99,8 @@ async def sync_simplefin_transactions(req: Optional[SimplefinSyncRequest] = None
 
     total_fetched = 0
     total_added = 0
+    # What this sync brought in, so the page can offer categories for exactly these.
+    new_ids: List[str] = []
 
     existing_keys = {
         dedupe_key(
@@ -175,6 +177,7 @@ async def sync_simplefin_transactions(req: Optional[SimplefinSyncRequest] = None
                             categorization_service.stamp_ingest(txn.to_dict())
                         )
                         existing_keys.add(key)
+                        new_ids.append(txn.transaction_id)
                         added += 1
                     elif txn.transaction_id in state.stored_transactions:
                         existing = state.stored_transactions[txn.transaction_id]
@@ -217,5 +220,6 @@ async def sync_simplefin_transactions(req: Optional[SimplefinSyncRequest] = None
         "to_date": to_date,
         "total_fetched": total_fetched,
         "total_new": total_added,
+        "new_ids": new_ids,
         "details": results,
     }

@@ -9,6 +9,7 @@ import FilterBar        from './FilterBar';
 import TransactionTable from './TransactionTable';
 import SuggestPreviewModal from './SuggestPreviewModal';
 import TransactionsRail from './TransactionsRail';
+import Spin from '../ui/Spin';
 import { bulkSuggestCategories, applyCategoryAssignments, deleteTransaction, previewDuplicates, applyDeduplication, putTransactionFields } from '../../api/transactions';
 import { getRuleForMerchant, previewCategoryRule, createCategoryRule } from '../../api/categoryRules';
 import HistoryPage      from './HistoryPage';
@@ -69,6 +70,7 @@ export default function TransactionsPage({ view }) {
   const [activeExpand, setActiveExpand] = useState(null);  // 'note-{id}' | 'adj-{id}' | null
   const [suggestionPreview, setSuggestionPreview] = useState(null);
   const [suggestingBulk, setSuggestingBulk] = useState(false);
+  const [suggestingCount, setSuggestingCount] = useState(0);
   const [dedupingNow, setDedupingNow] = useState(false);
 
   const {
@@ -295,19 +297,39 @@ export default function TransactionsPage({ view }) {
     }
   }, [visible, selected, reload, clearSelection, setError]);
 
-  const bulkSuggest = useCallback(async () => {
-    const ids = visible.filter((t) => selected.has(t.id)).map((t) => t.id);
-    if (!ids.length) return;
+  // `quiet` is for the post-sync offer: a preview with nothing in it is
+  // noise when the user didn't ask.
+  const suggestFor = useCallback(async (ids, { quiet = false } = {}) => {
     setSuggestingBulk(true);
+    setSuggestingCount(ids.length);
     try {
       const r = await bulkSuggestCategories(ids);
-      setSuggestionPreview(r.data);
+      if (!quiet || (r.data.results || []).length) setSuggestionPreview(r.data);
     } catch {
       setError('Could not get category suggestions — please try again');
     } finally {
       setSuggestingBulk(false);
+      setSuggestingCount(0);
     }
-  }, [visible, selected, setError]);
+  }, [setError]);
+
+  const bulkSuggest = useCallback(async () => {
+    const ids = visible.filter((t) => selected.has(t.id)).map((t) => t.id);
+    if (!ids.length) return;
+    await suggestFor(ids);
+  }, [visible, selected, suggestFor]);
+
+  // After a bank sync or CSV upload, offer categories for what it brought in.
+  const { newTransactionIds, clearNewTransactionIds } = sync;
+  useEffect(() => {
+    if (view !== 'current' || loading || !newTransactionIds.length) return;
+    const uncategorized = new Set(
+      transactions.filter((t) => !(t.category || '').trim()).map((t) => t.id),
+    );
+    const ids = newTransactionIds.filter((id) => uncategorized.has(id));
+    clearNewTransactionIds();
+    if (ids.length) suggestFor(ids, { quiet: true });
+  }, [view, loading, newTransactionIds, transactions, clearNewTransactionIds, suggestFor]);
 
   // ── reviewed toggles (inline + bulk) ───────────────────────────────────────
   const handleToggleReviewed = useCallback(async (txn, nextReviewed) => {
@@ -421,6 +443,13 @@ export default function TransactionsPage({ view }) {
                     aria-label="Dismiss error"
                     onClick={() => setError(null)}
                   >✕</button>
+                </div>
+              )}
+
+              {suggestingCount > 0 && selected.size === 0 && (
+                <div className="tx-suggest-status" role="status">
+                  <Spin /> Suggesting categories for {suggestingCount} new
+                  {suggestingCount === 1 ? ' transaction' : ' transactions'}…
                 </div>
               )}
 

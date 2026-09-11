@@ -16,6 +16,10 @@ export function useSyncFlow({ reload, setError, availableMonths, filterMonth, sh
   const [showAccountsModal, setShowAccountsModal] = useState(false);
   const [pendingCsvFile, setPendingCsvFile] = useState(null);
   const [accountsRefreshKey, setAccountsRefreshKey] = useState(0);
+  // Ids the last bank sync or CSV upload brought in, held until the
+  // Current page offers categories for them.
+  const [newTransactionIds, setNewTransactionIds] = useState([]);
+  const clearNewTransactionIds = useCallback(() => setNewTransactionIds([]), []);
 
   // Syncs the connected SimpleFIN source.
   const syncBanks = useCallback(async (fromDate, toDate, accountIds) => {
@@ -29,6 +33,7 @@ export function useSyncFlow({ reload, setError, availableMonths, filterMonth, sh
       setSyncToast(res.data);
       setAccountsRefreshKey((k) => k + 1);
       await reload();
+      setNewTransactionIds(res.data.new_ids || []);
     } catch (e) {
       const message = userMessage(e, 'Bank sync failed — please try again.');
       setError(message);
@@ -56,6 +61,7 @@ export function useSyncFlow({ reload, setError, availableMonths, filterMonth, sh
       });
       setError(null);
       await reload();
+      setNewTransactionIds((res.data.transactions || []).map((t) => t.id));
       const file = pendingCsvFile;
       const dupes = res.data.duplicates || 0;
       const label = dupes > 0 ? `${file.name} (${dupes} already loaded, skipped)` : file.name;
@@ -139,6 +145,8 @@ export function useSyncFlow({ reload, setError, availableMonths, filterMonth, sh
     setPendingCsvFile,
     accountsRefreshKey,
     setAccountsRefreshKey,
+    newTransactionIds,
+    clearNewTransactionIds,
     syncBanks,
     handleCsvPicked,
     submitCsvUpload,
