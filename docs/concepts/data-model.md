@@ -10,6 +10,8 @@ All data lives in **Postgres 16** with the **pgvector** extension. Migrations ar
 |---|---|
 | `accounts` | One row per account (SimpleFIN bank, SnapTrade brokerage, manual, or CSV-synth) |
 | `transactions` | Every transaction; the heart of the app |
+| `categories` | The label set as editable rows — colour, roles, sort, archived (`0032`), with one level of parent grouping (`0033`) |
+| `category_rules` | Merchant→category rules in evaluation order (`0021`), each a `merchant` or `text` kind (`0031`) |
 | `account_details` | Per-account metadata — APR, credit limit, statement/due day, monthly payment, opened/closed dates (`0022`), real-asset and tax-treatment fields (`0023`, `0027`) |
 | `balance_snapshots` | Point-in-time balance (live + manual + SnapTrade) — feeds net-worth history |
 | `holding_cost_overrides` | Cost basis you entered by hand, overriding the brokerage (`0026`) |
@@ -18,6 +20,8 @@ All data lives in **Postgres 16** with the **pgvector** extension. Migrations ar
 | `goals` | Savings goals with target + pace |
 | `user_profile` | Financial profile — risk, horizon, income, reserves (`0020`), retirement (`0025`), marginal rate (`0028`) |
 | `seed_custom` / `seed_removed_defaults` | Suggested reference material — your additions, and the defaults you hid |
+| `allowlist_hosts` | Hosts `POST /api/documents/from-url` is allowed to fetch |
+| `json_stores` | Key-value rows for the few stores that are still documents rather than tables (e.g. `snaptrade_creds`) |
 
 ## Conversation tables
 
@@ -46,7 +50,6 @@ All data lives in **Postgres 16** with the **pgvector** extension. Migrations ar
 |---|---|
 | `subscription_reviews` | Your keep / cancel / ignore decision per merchant, the amount at review time, and your `declared_cadence` / `declared_type` overrides (`0011`, `0029`) |
 | `merchant_aliases` | User-declared merges — `alias_key` folds into `canonical_key` so a renamed merchant stays one commitment (`0030`) |
-| `category_rules` | Merchant→category rules, in evaluation order (`0021`) |
 | `digests` | The weekly digest surfaced in Home's Needs-you feed (`0012`) |
 | `scheduled_tasks` | Recurring background syncs Fin can create (`0014`) |
 
@@ -80,7 +83,10 @@ Schema changes live in `backend/alembic/versions/`. Examples:
 - `0016`–`0019` — peer-to-peer shared expenses and settlement
 - `0029_declared_cadence.py` — user overrides for a commitment's cadence and kind
 - `0030_merchant_aliases.py` — folding several merchant keys into one commitment
+- `0031_category_rule_kinds.py` — merchant vs. text rules, and the order they run in
+- `0032_categories.py` — categories as editable rows rather than strings on transactions
+- `0033_category_parents.py` — one level of category grouping
 
-The head revision is `0030`.
+The head revision is `0033`.
 
 Container entry script (`backend/entrypoint.sh`) runs `alembic upgrade head` before launching uvicorn.

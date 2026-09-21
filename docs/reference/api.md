@@ -17,9 +17,27 @@ Every endpoint is mounted under `/api`. The static help site lives at `/help/`; 
 | `POST` | `/api/transactions/suggest-categories/bulk` | AI category suggestions for selected rows |
 | `POST` | `/api/transactions/dedupe` | Duplicate cleanup — `mode: "preview"` or `"apply"` |
 | `POST` | `/api/upload-csv` | Multipart CSV upload |
-| `GET` | `/api/categories` | Category list with usage counts |
-| `DELETE` | `/api/categories/{name}` | Delete a category and clear it everywhere |
-| `GET` `PUT` | `/api/category-rules` | User-authored merchant→category rules (whole-list replace) |
+| `GET` | `/api/categories` | Category rows with per-category transaction counts and this month's spend (`?include_archived=true` for archived ones) |
+| `POST` | `/api/categories` | Add one; an existing name (any casing) comes back as-is |
+| `PATCH` | `/api/categories/{id}` | Colour, roles, sort order, archived state |
+| `POST` | `/api/categories/{id}/rename` | Rename across every transaction, budget and rule; renaming onto an existing name merges |
+| `POST` | `/api/categories/{id}/merge` | Fold into another category; the survivor gains both role sets |
+| `POST` | `/api/categories/{id}/parent` | Group under a parent, or ungroup with a null parent — one level deep |
+| `DELETE` | `/api/categories/id/{id}` | Delete by id and clear it from every transaction using it |
+| `DELETE` | `/api/categories/{name}` | Delete by name — the shape the transactions picker uses |
+| `GET` | `/api/categories/roles` | The role vocabulary the editor's checkboxes are built from |
+
+## Category rules
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/category-rules` | Every rule in evaluation order — merchant rules first, then text rules |
+| `POST` | `/api/category-rules` | Create one, optionally sweeping transactions already imported |
+| `PUT` | `/api/category-rules` | Whole-list replace of the text rules; merchant rules are left alone |
+| `PATCH` `DELETE` | `/api/category-rules/{id}` | Edit in place (pattern, category, enabled, order) / remove |
+| `POST` | `/api/category-rules/{id}/apply` | Sweep an existing rule over transactions already imported |
+| `POST` | `/api/category-rules/preview` | What a rule *would* do — `matched`, `claimable`, `protected` — without writing |
+| `GET` | `/api/category-rules/for-merchant` | The merchant key for a description, and any rule already on it |
 
 ## Accounts & balances
 
@@ -89,7 +107,6 @@ Every endpoint is mounted under `/api`. The static help site lives at `/help/`; 
 | `POST` | `/api/sync/close-together` | Close a range of months with one payment |
 | `POST` | `/api/sync/corrections/{id}/acknowledge` | Dismiss a correction |
 | `PUT` | `/api/sync/peer-rows/{txn_id}/dispute` | Raise or clear a dispute |
-| `POST` | `/api/send-to-gsheet` | One-way export of shared transactions |
 | `GET` | `/api/gsheet/verify` | Smoke-test sheet connectivity |
 | `GET` | `/api/config/person-names` | Configured person names |
 

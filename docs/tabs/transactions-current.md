@@ -1,6 +1,6 @@
 # Transactions → Current
 
-> Source: `frontend/src/App.js`, `frontend/src/components/transactions/*`, `backend/routers/transactions.py`
+> Source: `frontend/src/components/transactions/TransactionsPage.js`, `frontend/src/components/transactions/*`, `frontend/src/hooks/useSyncFlow.js`, `backend/routers/transactions.py`
 
 Reached at `/transactions`. A review queue of every transaction (SimpleFIN-synced + CSV-uploaded) where you mark splits, add notes, categorize, and send shared expenses to Google Sheets.
 
@@ -11,8 +11,8 @@ The three Transactions views split by purpose: **Current** is the review queue, 
 | Element | What it does |
 |---|---|
 | **Sync panel** (top banner) | Shows last sync time and account status. Buttons: **Sync Banks**, **Accounts**. See [Sync panel section below](#sync-panel). |
-| **Control bar** | Stats pills (total / shared count / shared amount / unreviewed). Buttons: **📂 Upload CSV**, **📊 Send to Sheet**. |
-| **Bulk bar** (only when rows selected) | **Mark personal**, **50/50 split**, **Suggest categories**, **Clear selection**. |
+| **Control bar** | Stats pills (total / shared count / shared amount / unreviewed). Buttons: **↑ Upload CSV**, **⎘ Find duplicates**, **↗ Send to Sheet (n)**. |
+| **Bulk bar** (only when rows selected) | Selected count and the shared amount in the selection, then **Mark personal**, **Split 50/50**, **✓ Mark reviewed**, **↺ Mark unreviewed**, **✨ Suggest**, and **✕** to clear the selection. |
 | **Filter bar** | Bank dropdown, month dropdown, split-type dropdown, search box. Shows visible/total count. |
 | **Transaction table** | One row per transaction. Inline split toggle, type flip, note + adjust expanders. Clicking a row expands the [transaction detail editor](../modals/edit-transaction.md) beneath it. |
 | **Supporting rail** (right side) | Review progress, shared-with-person total, category breakdown, and — when a row is expanded — "Apply to similar". See [Supporting rail](#supporting-rail). |
@@ -70,10 +70,34 @@ while it works. Nothing is applied until you confirm, and applying a category ne
 reviewed. If you are on another page when the sync finishes, the preview waits until you open
 Current.
 
+### Remember a merchant
+
+Right after you set a row's category, a prompt appears beneath it: **Always categorize ⟨merchant⟩ as
+⟨category⟩**, checked by default — categorizing the same merchant over and over is the tedium it
+exists to end. When other transactions from that merchant are already imported it offers a second,
+*unchecked* box to sweep them too, since that rewrites rows you can already see.
+
+Rows a higher source already owns — ones you categorized by hand, or that a rule claimed — are never
+touched, and the prompt says how many it is leaving alone. **Remember** writes a merchant rule (it
+shows up under its category in [Settings](settings.md#categories-rules)); **Not now** dismisses it
+and stops asking about that merchant for the rest of the session. The prompt is skipped entirely when
+the merchant already has a rule.
+
+Backend: `GET /api/category-rules/for-merchant`, `POST /api/category-rules/preview`,
+`POST /api/category-rules` with `apply_to_existing`.
+
 ### Send shared expenses to Google Sheets
 
-1. Click **📊 Send to Sheet** in the control bar.
-2. All currently shared transactions are written to the configured Google Sheet. They **stay in your local records** and remain visible under [History](transactions-history.md); nothing is deleted. Running this twice for the same month appends those rows to the sheet twice.
+1. Click **↗ Send to Sheet (n)** in the control bar — *n* is the number of shared rows in view.
+2. Confirm. If a single month is selected in the filter bar, only that period syncs; otherwise every
+   shared row does.
+3. Your rows are pushed to the sheet and the peer's are pulled back in the same call. It is a
+   **two-way sync keyed by `Txn ID`**, not an append — running it twice does not duplicate rows.
+   Your local records are kept either way.
+
+A refused sync (a period already marked paid, say) reports the refusal; a cycle that fails reports
+the failure rather than a success toast counting rows that were never written. See
+[Transactions → Shared](transactions-shared.md) for the settle-up side of this.
 
 ### Upload a CSV
 
@@ -96,4 +120,5 @@ See also: [Bank sync concept](../concepts/bank-sync.md).
 - Single edit: `PUT /api/transactions/{id}`
 - Bulk edit: `PUT /api/transactions/bulk`
 - Bulk suggest: `POST /api/transactions/suggest-categories/bulk`
-- Send to Sheet: `POST /api/send-to-gsheet`
+- Send to Sheet: `POST /api/sync/shared` (two-way, month-scoped)
+- Remember a merchant: `GET /api/category-rules/for-merchant`, `POST /api/category-rules/preview`, `POST /api/category-rules`

@@ -1,6 +1,6 @@
 # Add Account modal
 
-> Source: `frontend/src/components/finances/BalancesSection.js`, `frontend/src/components/finances/AccountsTab.js`, `backend/routers/balances.py`
+> Source: `frontend/src/components/finances/AccountsTab.js`, `frontend/src/components/accounts/*`, `backend/routers/balances.py`
 
 Opens from **+ Add account** on [Accounts](../tabs/accounts.md) — the page actions row, or the “+ Add” at the foot of any section — and from **+ Add credit card or loan** on [Debt](../tabs/debt.md).
 
@@ -27,7 +27,7 @@ These show a **Manual** badge and survive restarts.
 
 ## Updating
 
-Manual balances are inline-editable in the Balances section. Edits are saved immediately.
+Manual balances are inline-editable in the **Cash & savings** and **Property & vehicles** sections on [Accounts](../tabs/accounts.md). Edits are saved immediately.
 
 ## Under the hood
 

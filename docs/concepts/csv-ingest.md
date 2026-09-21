@@ -1,6 +1,6 @@
 # CSV ingest
 
-> Source: `backend/csv_parser.py`, `backend/csv_watcher.py`, `backend/csv_watcher_script.py`, `backend/routers/transactions.py`
+> Source: `backend/csv_parser.py`, `backend/csv_watcher.py`, `backend/routers/transactions.py`
 
 Two paths for getting transactions in via CSV: **direct upload** through the UI and an **auto-watch folder**.
 
@@ -14,7 +14,7 @@ Two paths for getting transactions in via CSV: **direct upload** through the UI 
 
 ## Auto-watch
 
-Run `./run_csv_watcher.sh` (or `python backend/csv_watcher_script.py`) and drop CSVs into `csv_imports/`.
+Run `./run_csv_watcher.sh` (or `python backend/csv_watcher.py` from inside `backend/`) and drop CSVs into `csv_imports/`.
 
 - Successfully parsed → moves to `csv_imports/processed/`
 - Parse failure → moves to `csv_imports/failed/` with an error log

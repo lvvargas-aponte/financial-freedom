@@ -31,5 +31,5 @@ Info text shown: *"Ollama is not running — start it to get suggestions. You ca
 
 ## Under the hood
 
-- `POST /api/suggest-categories/bulk` — returns suggestions
+- `POST /api/transactions/suggest-categories/bulk` — returns suggestions
 - Apply uses a per-transaction `PUT /api/transactions/{id}` (or a category-batch endpoint)
